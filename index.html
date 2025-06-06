@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แอปจัดการรายรับ-รายจ่าย</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Day.js for date manipulation -->
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/plugin/utc.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/plugin/buddhistEra.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/locale/th.js"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Custom styles */
+        body {
+            font-family: 'Kanit', sans-serif;
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;700&display=swap');
+        .modal {
+            transition: opacity 0.25s ease;
+        }
+        .modal-active {
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+        /* Animation for the error banner to make it more noticeable */
+        @keyframes pulse-bg {
+          0%, 100% { background-color: #dc2626; } /* red-600 */
+          50% { background-color: #f87171; } /* red-400 */
+        }
+        .error-pulse {
+          animation: pulse-bg 2.5s infinite;
+        }
+        .view-btn-active {
+            background-color: white;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            color: #4f46e5; /* indigo-600 */
+        }
+        .view-btn-inactive {
+            color: #4b5563; /* gray-600 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <!-- Error Banner -->
+    <div id="error-banner" class="hidden bg-red-600 text-white text-center p-4 fixed top-0 left-0 w-full z-50">
+        <p id="error-message" class="max-w-4xl mx-auto font-bold text-base md:text-lg"></p>
+        <button id="close-error-banner" class="absolute top-1/2 -translate-y-1/2 right-4 font-bold text-2xl">&times;</button>
+    </div>
+
+    <!-- Main Container -->
+    <div id="app-container" class="container mx-auto p-4 max-w-4xl opacity-0 transition-opacity duration-500 mt-16">
+        <header class="text-center mb-6">
+            <h1 class="text-4xl font-bold text-indigo-600">สมุดรายรับ-รายจ่าย</h1>
+            <p id="user-id-display" class="text-xs text-gray-500 mt-2"></p>
+        </header>
+
+        <!-- View Toggle -->
+        <div class="flex justify-center mb-4 bg-gray-200 rounded-lg p-1">
+            <button id="daily-view-btn" class="px-4 py-2 w-1/3 rounded-md font-semibold view-btn-active">มุมมองรายวัน</button>
+            <button id="monthly-view-btn" class="px-4 py-2 w-1/3 rounded-md font-semibold view-btn-inactive">มุมมองรายเดือน</button>
+            <button id="yearly-view-btn" class="px-4 py-2 w-1/3 rounded-md font-semibold view-btn-inactive">มุมมองรายปี</button>
+        </div>
+
+        <!-- Month/Year Navigator -->
+        <div id="navigator" class="flex justify-between items-center mb-6">
+            <button id="prev-btn" class="p-3 bg-white rounded-full shadow-md hover:bg-gray-200 transition"><i class="fas fa-chevron-left"></i></button>
+            <h2 id="date-display" class="text-xl md:text-2xl font-bold text-center"></h2>
+            <button id="next-btn" class="p-3 bg-white rounded-full shadow-md hover:bg-gray-200 transition"><i class="fas fa-chevron-right"></i></button>
+        </div>
+
+        <!-- Main Content Area -->
+        <div id="content-area">
+             <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-green-100 p-4 rounded-lg shadow">
+                    <h3 class="font-semibold text-green-800">รายรับรวม</h3>
+                    <p id="total-income" class="text-2xl font-bold text-green-600">0.00 ฿</p>
+                </div>
+                <div class="bg-red-100 p-4 rounded-lg shadow">
+                    <h3 class="font-semibold text-red-800">รายจ่ายรวม</h3>
+                    <p id="total-expense" class="text-2xl font-bold text-red-600">0.00 ฿</p>
+                </div>
+                <div class="bg-blue-100 p-4 rounded-lg shadow">
+                    <h3 class="font-semibold text-blue-800">คงเหลือ</h3>
+                    <p id="balance" class="text-2xl font-bold text-blue-600">0.00 ฿</p>
+                </div>
+            </div>
+
+            <!-- Charts Container -->
+            <div id="charts-container" class="bg-white p-4 rounded-lg shadow mb-6">
+                 <h3 id="chart-title" class="font-semibold mb-2 text-center"></h3>
+                 <canvas id="main-chart"></canvas>
+            </div>
+
+            <!-- Transaction List -->
+            <div>
+                <h3 id="transaction-list-title" class="text-xl font-semibold mb-4">รายการ</h3>
+                <div id="transaction-list" class="space-y-3">
+                     <p class="text-center text-gray-500 py-8">ไม่มีข้อมูล</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    
+    <!-- Floating Action Button -->
+    <div class="fixed bottom-6 right-6 flex flex-col items-center space-y-3">
+         <button id="settings-btn" class="bg-gray-500 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:bg-gray-600 transition">
+            <i class="fas fa-cog text-xl"></i>
+        </button>
+        <button id="add-transaction-btn" class="bg-indigo-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center hover:bg-indigo-700 transition">
+            <i class="fas fa-plus text-2xl"></i>
+        </button>
+    </div>
+
+    <!-- Transaction Modal -->
+    <div id="transaction-modal" class="modal fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 id="modal-title" class="text-2xl font-bold mb-4">เพิ่มรายการ</h2>
+            <form id="transaction-form">
+                <input type="hidden" id="transaction-id">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">ประเภท</label>
+                    <div class="flex">
+                        <button type="button" id="type-income" class="w-1/2 py-2 border rounded-l-md">รายรับ</button>
+                        <button type="button" id="type-expense" class="w-1/2 py-2 border rounded-r-md">รายจ่าย</button>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label for="amount" class="block text-sm font-medium text-gray-700">จำนวนเงิน</label>
+                    <input type="number" id="amount" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" required>
+                </div>
+                <div class="mb-4">
+                    <label for="category" class="block text-sm font-medium text-gray-700">กลุ่ม</label>
+                    <select id="category" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" required></select>
+                </div>
+                <div class="mb-4">
+                    <label for="description" class="block text-sm font-medium text-gray-700">คำอธิบาย</label>
+                    <input type="text" id="description" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" required>
+                </div>
+                 <div class="mb-4">
+                    <label for="date" class="block text-sm font-medium text-gray-700">วันที่</label>
+                    <input type="date" id="date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" required>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" id="cancel-btn" class="bg-gray-200 px-4 py-2 rounded-md hover:bg-gray-300">ยกเลิก</button>
+                    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">บันทึก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+            <h2 class="text-2xl font-bold mb-6">ตั้งค่ากลุ่ม</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Income Categories -->
+                <div>
+                    <h3 class="font-semibold text-lg mb-3 text-green-600">กลุ่มรายรับ</h3>
+                    <form id="income-category-form" class="flex mb-3">
+                        <input type="text" id="income-category-name" placeholder="เพิ่มกลุ่มรายรับใหม่" class="flex-grow border-gray-300 rounded-l-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded-r-md hover:bg-green-600"><i class="fas fa-plus"></i></button>
+                    </form>
+                    <div id="income-category-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+                </div>
+                <!-- Expense Categories -->
+                <div>
+                    <h3 class="font-semibold text-lg mb-3 text-red-600">กลุ่มรายจ่าย</h3>
+                    <form id="expense-category-form" class="flex mb-3">
+                        <input type="text" id="expense-category-name" placeholder="เพิ่มกลุ่มรายจ่ายใหม่" class="flex-grow border-gray-300 rounded-l-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <button type="submit" class="bg-red-500 text-white px-4 py-2 rounded-r-md hover:bg-red-600"><i class="fas fa-plus"></i></button>
+                    </form>
+                    <div id="expense-category-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+                </div>
+            </div>
+            <div class="flex justify-end mt-6">
+                <button type="button" id="close-settings-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="modal fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-6 text-center">
+            <h2 id="confirm-title" class="text-xl font-bold mb-4">ยืนยันการลบ</h2>
+            <p id="confirm-message" class="text-gray-600 mb-6">คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้?</p>
+            <div class="flex justify-center space-x-4">
+                 <button id="cancel-delete-btn" class="bg-gray-200 px-6 py-2 rounded-md hover:bg-gray-300">ยกเลิก</button>
+                 <button id="confirm-delete-btn" class="bg-red-600 text-white px-6 py-2 rounded-md hover:bg-red-700">ยืนยัน</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getDatabase, ref, set, get, onValue, push, remove, update } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDdDrZACIHfN0zFfMwdGnPTzk7ZCJsoIWY",
+            authDomain: "canvas-project-1-a2dc5.firebaseapp.com",
+            databaseURL: "https://canvas-project-1-a2dc5-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "canvas-project-1-a2dc5",
+            storageBucket: "canvas-project-1-a2dc5.appspot.com",
+            messagingSenderId: "940129770708",
+            appId: "1:940129770708:web:72e2bcab5314b78c9bef41"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+
+        // Date configuration
+        dayjs.extend(window.dayjs_plugin_utc);
+        dayjs.extend(window.dayjs_plugin_buddhistEra);
+        dayjs.locale('th');
+
+        // Global state
+        let userId;
+        let currentDate = dayjs();
+        let allTransactions = {};
+        let incomeCategories = {};
+        let expenseCategories = {};
+        let currentTransactionType = 'expense';
+        let mainChart = null;
+        let currentView = 'daily'; // 'daily', 'monthly', or 'yearly'
+
+        // DOM Elements
+        const appContainer = document.getElementById('app-container');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const transactionModal = document.getElementById('transaction-modal');
+        const transactionForm = document.getElementById('transaction-form');
+        const settingsModal = document.getElementById('settings-modal');
+        const confirmModal = document.getElementById('confirm-modal');
+        const dateDisplay = document.getElementById('date-display');
+        const chartsContainer = document.getElementById('charts-container');
+
+        // --- AUTHENTICATION ---
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // User is signed in.
+                userId = user.uid;
+                userIdDisplay.textContent = `User ID: ${userId}`;
+                appContainer.classList.remove('opacity-0');
+                initializeAppLogic();
+            } else {
+                // User is signed out. Attempt to sign in anonymously.
+                signInAnonymously(auth).catch((error) => {
+                    console.error("Anonymous sign-in failed:", error);
+                    let userMessage = "เกิดข้อผิดพลาดในการยืนยันตัวตน โปรดลองอีกครั้ง";
+                    if (error.code === 'auth/configuration-not-found') {
+                        userMessage = "<strong>แอปไม่สามารถทำงานได้:</strong> โปรดเปิดใช้งาน 'Anonymous' sign-in ใน Firebase Console ของคุณ (ไปที่ Authentication > แท็บ Sign-in method) แล้วรีเฟรชหน้านี้";
+                    }
+                    showErrorBanner(userMessage);
+                    document.getElementById('app-container').style.display = 'none';
+                });
+            }
+        });
+
+        // --- INITIALIZATION ---
+        function initializeAppLogic() {
+            if (!userId) return;
+            setupEventListeners();
+            loadInitialData();
+            updateView(currentView); // Initial display
+        }
+
+        function loadInitialData() {
+            const incomeCatRef = ref(db, `users/${userId}/categories/income`);
+            const expenseCatRef = ref(db, `users/${userId}/categories/expense`);
+            const transactionsRef = ref(db, `users/${userId}/transactions`);
+
+            onValue(incomeCatRef, (snapshot) => {
+                incomeCategories = snapshot.exists() ? snapshot.val() : { 'เงินเดือน': 'เงินเดือน', 'รายได้เสริม': 'รายได้เสริม' };
+                if (!snapshot.exists()) set(incomeCatRef, incomeCategories);
+                renderCategoryLists();
+            });
+
+            onValue(expenseCatRef, (snapshot) => {
+                expenseCategories = snapshot.exists() ? snapshot.val() : { 'อาหาร': 'อาหาร', 'เดินทาง': 'เดินทาง', 'ที่อยู่อาศัย': 'ที่อยู่อาศัย' };
+                if (!snapshot.exists()) set(expenseCatRef, expenseCategories);
+                renderCategoryLists();
+            });
+
+            onValue(transactionsRef, (snapshot) => {
+                allTransactions = snapshot.exists() ? snapshot.val() : {};
+                updateDisplay();
+            });
+        }
+        
+        // --- UI & VIEW MANAGEMENT ---
+        function updateView(view) {
+            currentView = view;
+            const buttons = {
+                daily: document.getElementById('daily-view-btn'),
+                monthly: document.getElementById('monthly-view-btn'),
+                yearly: document.getElementById('yearly-view-btn')
+            };
+            // Update button styles
+            for (const key in buttons) {
+                buttons[key].classList.toggle('view-btn-active', key === view);
+                buttons[key].classList.toggle('view-btn-inactive', key !== view);
+            }
+            updateDisplay();
+        }
+
+        function updateDisplay() {
+            let transactions;
+            let listTitle = "รายการ";
+            
+            if (currentView === 'daily') {
+                dateDisplay.textContent = currentDate.format('dddd, D MMMM BBBB');
+                transactions = getTransactionsForDay(currentDate);
+                listTitle = `รายการวันที่ ${currentDate.format('D MMM')}`;
+                renderExpenseChart(transactions);
+            } else if (currentView === 'monthly') {
+                dateDisplay.textContent = currentDate.format('MMMM BBBB');
+                transactions = getTransactionsForMonth(currentDate);
+                listTitle = `รายการในเดือน${currentDate.format('MMMM')}`;
+                renderExpenseChart(transactions);
+            } else { // yearly
+                dateDisplay.textContent = `ปี ${currentDate.format('BBBB')}`;
+                transactions = getTransactionsForYear(currentDate.year());
+                listTitle = `รายการในปี ${currentDate.format('BBBB')}`;
+                renderYearlyChart(currentDate.year());
+            }
+
+            document.getElementById('transaction-list-title').textContent = listTitle;
+            renderSummary(transactions);
+            renderTransactionList(transactions);
+        }
+
+        // --- DATA FILTERING ---
+        function getTransactionsForDay(date) {
+            const dayKey = date.format('YYYY-MM-DD');
+            const result = {};
+            for (const id in allTransactions) {
+                if (allTransactions[id].date === dayKey) {
+                    result[id] = allTransactions[id];
+                }
+            }
+            return result;
+        }
+
+        function getTransactionsForMonth(date) {
+            const monthKey = date.format('YYYY-MM');
+            const result = {};
+            for (const id in allTransactions) {
+                if (allTransactions[id].date.startsWith(monthKey)) {
+                    result[id] = allTransactions[id];
+                }
+            }
+            return result;
+        }
+
+        function getTransactionsForYear(year) {
+             const result = {};
+             for (const id in allTransactions) {
+                 if (dayjs(allTransactions[id].date).year() === year) {
+                     result[id] = allTransactions[id];
+                 }
+             }
+             return result;
+        }
+
+        // --- UI & DATA RENDERING ---
+        function renderSummary(transactions) {
+            let income = 0;
+            let expense = 0;
+            Object.values(transactions).forEach(t => {
+                if (t.type === 'income') {
+                    income += parseFloat(t.amount);
+                } else {
+                    expense += parseFloat(t.amount);
+                }
+            });
+            const balance = income - expense;
+
+            document.getElementById('total-income').textContent = `${income.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿`;
+            document.getElementById('total-expense').textContent = `${expense.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿`;
+            document.getElementById('balance').textContent = `${balance.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿`;
+        }
+
+        function renderTransactionList(transactions) {
+            const listEl = document.getElementById('transaction-list');
+            listEl.innerHTML = '';
+            const sortedTransactions = Object.entries(transactions).sort(([,a], [,b]) => new Date(b.date) - new Date(a.date));
+
+            if (sortedTransactions.length === 0) {
+                listEl.innerHTML = '<p class="text-center text-gray-500 py-8">ไม่มีข้อมูล</p>';
+                return;
+            }
+
+            sortedTransactions.forEach(([id, t]) => {
+                const isIncome = t.type === 'income';
+                const item = document.createElement('div');
+                item.className = 'bg-white p-4 rounded-lg shadow-sm flex items-center';
+                const transactionDate = dayjs(t.date);
+                const formattedDate = transactionDate.format('D MMM BBBB');
+
+                item.innerHTML = `
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center mr-4 ${isIncome ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}">
+                        <i class="fas ${isIncome ? 'fa-arrow-down' : 'fa-arrow-up'}"></i>
+                    </div>
+                    <div class="flex-grow">
+                        <p class="font-semibold">${t.description}</p>
+                        <p class="text-sm text-gray-500">${t.category} • ${formattedDate}</p>
+                    </div>
+                    <div class="text-right">
+                         <p class="font-bold text-lg ${isIncome ? 'text-green-600' : 'text-red-600'}">${isIncome ? '+' : '-'}${parseFloat(t.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</p>
+                    </div>
+                     <div class="ml-4 flex space-x-2">
+                        <button class="edit-btn p-2 text-gray-400 hover:text-blue-500" data-id="${id}"><i class="fas fa-edit"></i></button>
+                        <button class="delete-btn p-2 text-gray-400 hover:text-red-500" data-id="${id}"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        function renderExpenseChart(transactions) {
+            chartsContainer.style.display = 'block';
+            document.getElementById('chart-title').textContent = 'สัดส่วนรายจ่าย';
+            const ctx = document.getElementById('main-chart').getContext('2d');
+            const expenseData = {};
+            Object.values(transactions).forEach(t => {
+                if (t.type === 'expense') {
+                    expenseData[t.category] = (expenseData[t.category] || 0) + parseFloat(t.amount);
+                }
+            });
+
+            if (mainChart) mainChart.destroy();
+
+            if (Object.keys(expenseData).length === 0) {
+                 chartsContainer.style.display = 'none';
+                 return;
+            }
+
+            mainChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(expenseData),
+                    datasets: [{
+                        data: Object.values(expenseData),
+                        backgroundColor: ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'],
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        function renderYearlyChart(year) {
+             chartsContainer.style.display = 'block';
+             document.getElementById('chart-title').textContent = 'สรุปรายรับ-รายจ่ายรายปี';
+             const ctx = document.getElementById('main-chart').getContext('2d');
+             const yearData = {
+                 income: Array(12).fill(0),
+                 expense: Array(12).fill(0)
+             };
+
+             Object.values(allTransactions).forEach(t => {
+                 const tDate = dayjs(t.date);
+                 if (tDate.year() === year) {
+                     const monthIndex = tDate.month();
+                     if (t.type === 'income') yearData.income[monthIndex] += parseFloat(t.amount);
+                     else yearData.expense[monthIndex] += parseFloat(t.amount);
+                 }
+             });
+
+             if (mainChart) mainChart.destroy();
+
+             mainChart = new Chart(ctx, {
+                 type: 'bar',
+                 data: {
+                     labels: dayjs.localeData().months(),
+                     datasets: [
+                         { label: 'รายรับ', data: yearData.income, backgroundColor: 'rgba(34, 197, 94, 0.6)' },
+                         { label: 'รายจ่าย', data: yearData.expense, backgroundColor: 'rgba(239, 68, 68, 0.6)' }
+                     ]
+                 },
+                 options: {
+                     scales: { y: { beginAtZero: true } },
+                     responsive: true,
+                     plugins: { legend: { position: 'top' } }
+                 }
+             });
+        }
+
+        // --- MODAL & FORM HANDLING ---
+        function openTransactionModal(mode = 'add', transactionId = null) {
+            transactionForm.reset();
+            const modalTitle = document.getElementById('modal-title');
+            document.getElementById('transaction-id').value = transactionId;
+
+            if (mode === 'edit' && transactionId) {
+                modalTitle.textContent = 'แก้ไขรายการ';
+                const transaction = allTransactions[transactionId];
+                document.getElementById('amount').value = transaction.amount;
+                document.getElementById('description').value = transaction.description;
+                document.getElementById('date').value = transaction.date;
+                setTransactionType(transaction.type);
+                document.getElementById('category').value = transaction.category;
+            } else {
+                modalTitle.textContent = 'เพิ่มรายการ';
+                setTransactionType('expense'); // Default to expense
+                document.getElementById('date').value = currentDate.format('YYYY-MM-DD');
+            }
+            transactionModal.classList.remove('hidden');
+        }
+
+        function closeTransactionModal() {
+            transactionModal.classList.add('hidden');
+        }
+        
+        function setTransactionType(type) {
+            currentTransactionType = type;
+            const incomeBtn = document.getElementById('type-income');
+            const expenseBtn = document.getElementById('type-expense');
+            incomeBtn.classList.toggle('bg-green-500', type === 'income');
+            incomeBtn.classList.toggle('text-white', type === 'income');
+            expenseBtn.classList.toggle('bg-red-500', type === 'expense');
+            expenseBtn.classList.toggle('text-white', type === 'expense');
+            updateCategoryDropdown(type);
+        }
+
+        function updateCategoryDropdown(type) {
+            const select = document.getElementById('category');
+            select.innerHTML = '';
+            const categories = type === 'income' ? incomeCategories : expenseCategories;
+            for (const cat in categories) {
+                const option = new Option(categories[cat], cat);
+                select.add(option);
+            }
+        }
+        
+        function handleTransactionFormSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById('transaction-id').value;
+            const transactionData = {
+                type: currentTransactionType,
+                amount: parseFloat(document.getElementById('amount').value),
+                category: document.getElementById('category').value,
+                description: document.getElementById('description').value,
+                date: document.getElementById('date').value
+            };
+            
+            if (!transactionData.amount || !transactionData.category || !transactionData.description || !transactionData.date) {
+                alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+                return;
+            }
+
+            const transactionRef = id ? ref(db, `users/${userId}/transactions/${id}`) : push(ref(db, `users/${userId}/transactions`));
+            set(transactionRef, transactionData)
+                .then(() => closeTransactionModal())
+                .catch(err => console.error("Write failed: ", err));
+        }
+        
+        // --- SETTINGS / CATEGORIES ---
+        function renderCategoryLists() {
+            const renderList = (type, listEl, categories) => {
+                listEl.innerHTML = '';
+                Object.entries(categories).forEach(([key, value]) => {
+                    const item = document.createElement('div');
+                    item.className = 'flex justify-between items-center bg-gray-100 p-2 rounded';
+                    item.innerHTML = `<span>${value}</span><button class="delete-cat-btn text-red-400 hover:text-red-600" data-key="${key}" data-type="${type}"><i class="fas fa-times-circle"></i></button>`;
+                    listEl.appendChild(item);
+                });
+            };
+            renderList('income', document.getElementById('income-category-list'), incomeCategories);
+            renderList('expense', document.getElementById('expense-category-list'), expenseCategories);
+        }
+
+        function handleAddCategory(e, type) {
+            e.preventDefault();
+            const input = document.getElementById(`${type}-category-name`);
+            const name = input.value.trim();
+            if (name) {
+                const newCatRef = push(ref(db, `users/${userId}/categories/${type}`));
+                set(newCatRef, name);
+                input.value = '';
+            }
+        }
+
+        function handleDeleteCategory(key, type) {
+            const categories = type === 'income' ? incomeCategories : expenseCategories;
+            if (Object.keys(categories).length <= 1) {
+                alert(`ไม่สามารถลบกลุ่มสุดท้ายได้`);
+                return;
+            }
+            remove(ref(db, `users/${userId}/categories/${type}/${key}`));
+        }
+
+        // --- ERROR HANDLING ---
+        function showErrorBanner(message) {
+            const banner = document.getElementById('error-banner');
+            const messageEl = document.getElementById('error-message');
+            messageEl.innerHTML = message;
+            banner.classList.add('error-pulse');
+            banner.classList.remove('hidden');
+        }
+
+        // --- EVENT LISTENERS ---
+        function setupEventListeners() {
+            document.getElementById('close-error-banner').addEventListener('click', () => document.getElementById('error-banner').classList.add('hidden'));
+
+            // View Toggles
+            document.getElementById('daily-view-btn').addEventListener('click', () => updateView('daily'));
+            document.getElementById('monthly-view-btn').addEventListener('click', () => updateView('monthly'));
+            document.getElementById('yearly-view-btn').addEventListener('click', () => updateView('yearly'));
+
+            // Navigator
+            document.getElementById('prev-btn').addEventListener('click', () => {
+                const unit = currentView === 'daily' ? 'day' : currentView === 'monthly' ? 'month' : 'year';
+                currentDate = currentDate.subtract(1, unit);
+                updateDisplay();
+            });
+            document.getElementById('next-btn').addEventListener('click', () => {
+                const unit = currentView === 'daily' ? 'day' : currentView === 'monthly' ? 'month' : 'year';
+                currentDate = currentDate.add(1, unit);
+                updateDisplay();
+            });
+            
+            // FABs
+            document.getElementById('add-transaction-btn').addEventListener('click', () => openTransactionModal('add'));
+            document.getElementById('settings-btn').addEventListener('click', () => settingsModal.classList.remove('hidden'));
+
+            // Transaction Modal
+            document.getElementById('type-income').addEventListener('click', () => setTransactionType('income'));
+            document.getElementById('type-expense').addEventListener('click', () => setTransactionType('expense'));
+            document.getElementById('cancel-btn').addEventListener('click', closeTransactionModal);
+            transactionForm.addEventListener('submit', handleTransactionFormSubmit);
+            
+            // Transaction List Actions (Event Delegation)
+            document.getElementById('transaction-list').addEventListener('click', (e) => {
+                const editBtn = e.target.closest('.edit-btn');
+                const deleteBtn = e.target.closest('.delete-btn');
+                if (editBtn) openTransactionModal('edit', editBtn.dataset.id);
+                if (deleteBtn) openConfirmModal(deleteBtn.dataset.id);
+            });
+
+            // Settings Modal
+            document.getElementById('close-settings-btn').addEventListener('click', () => settingsModal.classList.add('hidden'));
+            document.getElementById('income-category-form').addEventListener('submit', (e) => handleAddCategory(e, 'income'));
+            document.getElementById('expense-category-form').addEventListener('submit', (e) => handleAddCategory(e, 'expense'));
+            settingsModal.addEventListener('click', (e) => {
+                const deleteBtn = e.target.closest('.delete-cat-btn');
+                if (deleteBtn) handleDeleteCategory(deleteBtn.dataset.key, deleteBtn.dataset.type);
+            });
+
+            // Confirmation Modal
+            let itemToDelete = null;
+            function openConfirmModal(id) {
+                 itemToDelete = id;
+                 confirmModal.classList.remove('hidden');
+                 document.getElementById('confirm-title').textContent = 'ยืนยันการลบรายการ';
+                 document.getElementById('confirm-message').textContent = 'คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้?';
+            }
+            document.getElementById('cancel-delete-btn').addEventListener('click', () => confirmModal.classList.add('hidden'));
+            document.getElementById('confirm-delete-btn').addEventListener('click', () => {
+                if (itemToDelete) remove(ref(db, `users/${userId}/transactions/${itemToDelete}`));
+                confirmModal.classList.add('hidden');
+            });
+        }
+    </script>
+
+</body>
+</html>
